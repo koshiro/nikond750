@@ -180,3 +180,21 @@ Comandos: `DumpStrings.java` → `work/main_strings.tsv` (1884 cadenas ASCII con
 ### H25 · Qué NO se encontró todavía (por confirmar)
 - Límites de video (29 min 59 s), lista de ISO, tablas de región/país de la cámara (solo `xmp:Country`), restricciones por mercado: no se localizaron constantes ni tablas. Requieren rastrear desde los textos de menú hasta sus ajustes (el principal está en `b1010_115a.bin`, 13303 funciones sin nombres salvo `CMoviePlayApplicationService_*`).
 - La validación de la cámara al actualizar: no se sabe si comprueba más que los CRC (H21). Sin eso no se debe proponer un parche que se flashee.
+
+## 2026-10-31 · Hoja de datos CYW43362, calidad de imagen y depuración
+
+### H26 · El WiFi está limitado por el hardware a 20 MHz (verificado con la hoja de datos oficial)
+Fuente: `~/Downloads/CYW43362.PDF` (hoja de datos de Cypress; `pdftotext -layout` y grep).
+- §5.2 PHY: `IEEE 802.11b/g/n single stream … data rates from 1 Mbps to 72 Mbps`. Tabla de sensibilidad RX: `20 MHz channel spacing for all MCS rates` (MCS0-MCS7, MCS7 = 72 Mbps) y filtro de 3 dB de 9-10 MHz. No hay ningún modo de 40 MHz ni MCS por encima de 7.
+- Conclusión: el techo de ~72 Mbps de PHY (≈25-30 Mbps reales, 3-4 MB/s) es del chip; **no hay parche de firmware que suba el caudal**. Cierra H19/H23 en negativo: ni el `chanspec`, ni `bw_cap`, ni cambiar el blob del chip (H21) pueden agregar 40 MHz. El único margen es de eficiencia (p. ej. `ampdu_manual_mode`, `sgi_tx`), sin ganancia medible esperable.
+
+### H27 · Compresión de imagen: ya hay RAW sin pérdida; no hay modo sin comprimir (verificado en textos del menú)
+Comando: `grep -iE "compress|lossless|uncompress|NEF|12-bit|14-bit" work/main_utf16be.tsv`.
+- Menú de la D750 (0x756f2b): `Lossless compressed`, `Compressed`, `12-bit`, `14-bit`. No existe `Uncompressed` en las cadenas del programa. Ayuda de menú (0x75a965): `"Compressed" uses non-reversible compression for smaller file sizes`; JPEG: `Size priority` / `Optimal quality`.
+- Implicación (razonamiento, por confirmar): **NEF 14-bit sin pérdida ya conserva todos los datos del sensor**; un modo sin comprimir tendría el mismo contenido en archivos mayores, así que no mejora la calidad. Mejor que eso, solo podría ser quitar el procesado interno del RAW (reducción de ruido/«cooking» de la D750 no documentado), que no se ha investigado.
+- JPEG: las tablas de cuantización y el motor JPEG están en la parte no resuelta del principal; subir la calidad del JPEG es posible en teoría pero irrelevante frente al NEF.
+
+### H28 · Depuración y puerto serie (verificado la existencia; sin forma conocida de activarlo)
+- Tabla de configuración de T-Kernel (0x9126e4e8, bytes en `b1010_115a.bin` desde `0x126e4a0`): `DEBUGMODE`, `TmConsEnable`, `TmDebugPort`, `TmBaudRate`; justo antes de `TmDebugPort` hay el valor `00 c2 01 00` = **115200** (little-endian `0x0001c200`), probable velocidad de la consola serie. Valores de `DEBUGMODE`/`TmConsEnable` y qué puerto es: por confirmar.
+- Ninguna de esas cadenas (ni `DebugCmd %d %x %d`, `UART_SetConfiguration…`, `serialNo`, `API LIMITED`) tiene referencias en la importación a base `0x90000000`: búsqueda de sus direcciones como literales en el binario → 0 coincidencias. Es consistente con que el archivo principal contiene **varias imágenes enlazadas a otras direcciones** (solo 586 de 1884 cadenas tienen xref), así que la importación actual cubre solo una parte del código. Falta partir el principal en sus imágenes y cargar cada una con su base.
+- Acceso: una consola UART exigiría abrir la cámara y soldar a pads de la placa, o un comando de depuración por USB/PTP que no se ha encontrado. No se hizo nada en la cámara.
