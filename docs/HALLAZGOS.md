@@ -44,3 +44,30 @@ Si fuera ruido aleatorio o un cifrado de flujo con clave única, casi no habría
 
 ### H7 · Arquitectura de CPU (por confirmar)
 - No determinable aún: sin texto en claro ni cabeceras. La D750 usa EXPEED 4 (según el skill; ARM de 32 bits supuesto, sin verificar en el binario).
+
+## 2026-10-31 · Descifrado con el esquema de WonderLantern (parcial)
+
+Fuente consultada (leída, no ejecutada tal cual): README, `extract_key.py` y `decrypt_firmware.py` de `WonderLantern/nikon-fw-key-tool`, descargados con `gh api` a `work/wonderlantern/` (no versionado). Sondas propias: `scripts/d750_t1_probe.py` y `scripts/d750_decrypt.py` (importan funciones de `extract_key.py`).
+
+### H8 · La D750 usa el mismo esquema XOR T1/T2/T3 que las Z, con el cuerpo desde el offset 0 (verificado)
+Comando: `.venv/bin/python -I scripts/d750_t1_probe.py firmware/D750_0115.bin work/wonderlantern 0`
+- La fórmula `plain[i] = cipher[i] ^ T1[i&0xFF] ^ T2[(i>>8)&0xFF] ^ T3[(i>>16)&0xFF]` aplica con `i` = offset de archivo (en la D750 las 32 espacios están en `0x00` y no hay cabecera de 32 bytes con SHA-1). Con cabecera `0x20` no sale ninguna familia de T1.
+- **T1 y T2 recuperados completos y sus SHA-256 coinciden con los valores de referencia de las Z** (`T1 29d2e34239fc33bf…`, `T2 6e87de5da7e42df9…`): son las mismas tablas.
+- Con las tablas parciales, el directorio de módulos descifrado es válido: 3 módulos encadenados hasta `tamaño-16`:
+
+| Módulo | Offset | Longitud |
+|--------|--------|----------|
+| `a1010_011100.bin` | 0x90 | 786434 |
+| `_wma_ver01.00.00` | 0xc0092 | 441143 |
+| `b1010_115a.bin` | 0x12bbc9 | 20324450 |
+
+  (`0x12bbc9 + 20324450 = 21552171 = tamaño − 16`). Nota: en el directorio el nombre va en `+0` y offset/longitud en `+16/+20` de cada entrada de 32 bytes.
+
+### H9 · Arquitectura: ARM Thumb-2 (verificado en código descifrado; modelo exacto por confirmar)
+- Bloques con T3 conocido (p. ej. 40 y 53, offsets `0x280000`/`0x350000`) descifran a Thumb-2 (`f7 9c ff 07 46 98 f8 b8 02 …`, `bl`/`ldrb`) y cadenas reales (`20%02d/%02d/%02d %02d:%02d:%02d`).
+- El bloque 137 (T3 conocido) es texto UTF-16 de los menús (`vid\nphotoprint effect.\nMonochrome…`), lo que confirma el descifrado.
+
+### H10 · Falta T3 en 201 de 256 bloques de 64 KiB (por resolver)
+- T3 por relleno constante: solo **55/256** bloques (los bloques 0-71 y 134-251 con huecos). Sin T3 no se descifra el resto.
+- Intentos de recuperarlo solo con este .bin (verificado, insuficientes): puntuar por bytes cero acierta 42/55 sobre bloques conocidos; sumar decodificación Thumb con capstone tampoco mejora (42/55). La entropía es invariante a XOR, no sirve. Hay bloques de texto (UTF-16 Devanagari, `09 xx`) y datos comprimidos donde la estadística no distingue la constante.
+- Vía fiable: las propias tablas de las Z. WonderLantern documenta que 4 imágenes (`Z_8_0311`, `Z7_2_0170`, `Z_6_0380`, `Z_50_0260`) cubren los 256 bloques de T3 y las tablas son comunes. Pendiente: obtener alguna imagen Z o la T3 por otra vía.
