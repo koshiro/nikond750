@@ -155,3 +155,28 @@ Comandos: `strings -a -n 4 work/d750_modulos/_wma_ver01.00.00 | grep -iE "bcm[0-
 - Cambiar el blob exige recalcular el CRC16 del módulo y el CRC de paquete (viables: algoritmo conocido, verificado) y el mismo tamaño/ubicación (la imagen cargada está en RAM del chip con espacio limitado). **Por confirmar:** si la D750 valida algo más que los CRC; el archivo no trae el digest SHA-1 con clave de las Z (empieza con 32 espacios), pero no sé si la cámara lo comprueba de otra forma.
 - Un firmware más nuevo no habilitaría 40 MHz si el límite es del PHY; el 5.90.153.x ya es el de la familia 43362 (2013) y las versiones posteriores de Cypress/Infineon son correcciones. **Riesgo alto:** un `_wma` malo puede dejar sin WiFi o brickear la cámara. No se flashea nada sin petición explícita.
 - Fuentes: https://lore.kernel.org/all/20130611153052.GA18389@ws/T/, https://wireless.docs.kernel.org/en/latest/en/users/drivers/b43.html
+
+## 2026-10-31 · Análisis en Ghidra: WiFi y opciones desbloqueables
+
+### H22 · `_wma_ver01.00.00` es un archivo DfuSe de un STM32 con dos imágenes (verificado)
+Comando: parseo de la cabecera DfuSe (versión 1, destino `01000014WLAN1`, 2 elementos); `shasum -a 256 work/d750_modulos/wma_*.bin`.
+- Elemento 0: dirección de flash **`0x08020000`**, 227928 bytes (`wma_stm32_app.bin`) = firmware del microcontrolador WLAN (código Thumb de Cortex-M; pila de red de Ubiquitous Corp.). Importado en Ghidra como `ARM:LE:32:Cortex`, base `0x08020000` (proyecto `work/ghidra-wma/`).
+- Elemento 1: dirección **`0x08060000`**, 212896 bytes (`wma_bcm43362_fw.bin`) = firmware del Broadcom BCM43362 (5.90.153.0, en claro), que el STM32 vuelca a la RAM del chip por SDIO.
+- Corrige H20/H21: el blob del chip es el elemento 1 completo, no un rango estimado. Pie DfuSe `UFD` presente.
+
+### H23 · Cómo fija el ancho de canal la cámara (verificado en decompilado; interpretación por confirmar)
+Comando: `analyzeHeadless … -postScript DecompRefs.java work/wma_chanspec.c chanspec nmode nrate sgi_tx ampdu_manual_mode` y `DecompCallers.java` (scripts en `scripts/ghidra/`; salidas `work/wma_chanspec.c`, `work/wma_callers.c`).
+- Los iovars se envían con un envoltorio común `FUN_0802dc66(nombre, ctx, 4, valor)`. `chanspec` → `FUN_0802ea3c` (0x0802ea3c); `nmode` → `FUN_0802e6b0`; `nrate` → `FUN_0802e8f2`; `sgi_tx` → `FUN_0802ea18`.
+- `FUN_0802bc20` (selección de canal, mensaje `select channel %d`) pasa solo el **número de canal** (`local_6c & 0xff`) a `chanspec`, sin los bits de ancho de banda: queda el ancho por defecto del chip (20 MHz en 2,4 GHz). `FUN_08029c6e` (arranque del modo AP, `[WLAN] ====>`) fija `sgi_tx = -1` (auto) y `sgi_rx = 1`.
+- La cámara nunca usa `bw_cap`, `mimo_bw_cap` ni un `chanspec` con ancho de 40 MHz. **Palanca teórica:** parchear el STM32 para fijar `bw_cap`/`chanspec` de 40 MHz. **Condición:** que el PHY del BCM43362 soporte HT40, no demostrado (H19/H20); si no, no hay efecto o el chip lo rechaza.
+
+### H24 · Sistema operativo y opciones de depuración del programa principal (verificado cadenas; uso por confirmar)
+Comandos: `DumpStrings.java` → `work/main_strings.tsv` (1884 cadenas ASCII con xref) y extracción UTF-16BE → `work/main_utf16be.tsv` (56842 secuencias, incluye los textos de los menús y mensajes).
+- SO: **T-Kernel (T-Engine/Extension)** con POSIX y SMP (`TSysName=T-Kernel`, `SMP_SPMCoreNum`, `MEMPART_*`). Claves de configuración con nombres de depuración: `DEBUGMODE`, `ConsDrvEnable`, `DEBUGPORT`, `RsDrvEnable`, `TmConsEnable`, `TmDebugPort`, `TmBaudRate` (0x91264f83-0x91265258) y rutinas `UART_SetConfiguration/SetSendEnabled` (0x9000ddf4). Sugieren una consola serie de depuración; el valor por defecto y cómo se activa quedan por confirmar (los nombres están en una tabla, sin xref directa).
+- Volcados de depuración de fábrica, con la función que los usa: `A:\LVRAW%03d.RAW` (0x901c6038, fn 0x901c5ba4), `A:\SIG%04d.RAW` (0x901c64d4, fn 0x901c615a), `B:\1140_12.RAW` / `B:\1140_14.RAW` (0x901c2a08/0x901c29f8, fn 0x9019f3ee), `B:\TESTJPEG.JPG` (fn 0x901c001a), `A:\TEST%04d.WAV` / `B:\TEST%04d.WAV`. También `DebugCmd %d %x %d` (0x900a1630) y `Regist Limit Error`.
+- Protección térmica del WiFi: mensaje `Network access not available until camera cools. Wi-Fi connection disabled.` (en el bloque UTF-16BE de mensajes, cerca de 0x753901): confirma que existe una condición de desactivación por temperatura.
+- Textos de interfaz: menús y mensajes en inglés desde 0x73d5b5 hasta ≈0x754500 y otros idiomas en bloques vecinos (ver H9: el bloque 137 es texto de menús).
+
+### H25 · Qué NO se encontró todavía (por confirmar)
+- Límites de video (29 min 59 s), lista de ISO, tablas de región/país de la cámara (solo `xmp:Country`), restricciones por mercado: no se localizaron constantes ni tablas. Requieren rastrear desde los textos de menú hasta sus ajustes (el principal está en `b1010_115a.bin`, 13303 funciones sin nombres salvo `CMoviePlayApplicationService_*`).
+- La validación de la cámara al actualizar: no se sabe si comprueba más que los CRC (H21). Sin eso no se debe proponer un parche que se flashee.
