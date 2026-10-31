@@ -90,3 +90,34 @@ Comando: `.venv/bin/python -I scripts/d750_solve_tables.py work/wonderlantern wo
 - Las tres imágenes coinciden en la familia de T1 y T1/T2 dan los hashes de referencia (`29d2e342…`, `6e87de5d…`). T3: `207/256` bloques cubiertos por relleno constante; etapa 5 no corrige ninguno.
 - T3 faltante (49 índices): `72-77, 90, 91, 102, 108, 125-128, 144-146, 148, 150, 160, 161, 164-166, 180, 185, 187, 188, 191, 193, 194, 196-198, 200, 201, 203-209, 211, 212, 220, 224, 244, 245`.
 - Siguiente: otra imagen Nikon del esquema legado (D800 u otra) con relleno en esos índices. `work/key.json` no se versiona.
+
+## 2026-10-31 · D750 descifrada y validada
+
+### H13 · Imágenes añadidas (verificado: `shasum -a 256 firmware/*.bin`)
+
+| Archivo | Tamaño (bytes) | SHA-256 | Formato |
+|---------|----------------|---------|---------|
+| `D800_0111.bin` | 15859842 | `fc1273aafd9787a665f662224e4b1aa1e0ff12a5af7befb1e3ec5cd112f6f0ab` | 32 espacios en `0x00` (como D750) |
+| `D500_0140.bin` | 26645063 | `3d00b66bfc04bd99a050f3b7bcd83737ed5f0248390b512d1ba6de79fd24d84e` | formato Z (cabecera 32 B) |
+| `D850_0131.bin` | 27660549 | `4599b23822b963d91a27e51338eae505385db4b1427919b0a0546f732b617c9c` | formato Z |
+
+### H14 · T3 completa (verificado con CRC)
+Comandos: `scripts/d750_solve_tables.py` (6 imágenes → T3 238/256), `scripts/d750_fill_t3.py` (complemento 0xFF + 18 índices por puntuación de ceros agrupada entre imágenes) y `scripts/d750_crc_oracle.py` (resto CRC16 de cada módulo, lineal con init 0).
+- Dos pasos que importan: (1) T3 por relleno queda ambigua por complemento `0xFF` en 75 índices (etapa 5 de WonderLantern, que mi script omitía al principio); (2) T3[187] salió `0x0e` y el oráculo del CRC de la Z 6 dio una única solución consistente (`b=187, d=0xbe`) → `0xb0`.
+- Con esa T3: **todos los módulos de la D750, D800, D780 y Z 6 dan resto CRC16 = 0**, incluido el módulo principal de 20 MB de la D750 (toca los 256 índices), y el **CRC de paquete de la D750 coincide**. Es evidencia fuerte de que la clave es correcta.
+- **Sin resolver:** un módulo de la D500 (`b1110_140.bin`) y uno de la D850 (`b1330_131.bin`) no validan (candidatos de un índice: 29, 102, 193; los dos coinciden). No afecta a la D750 y no se investigó.
+- La clave completa está en `work/key_full2.json` (no versionada).
+
+### H15 · Módulos de la D750 (verificado: `scripts/d750_extract_modules.py work/key_full2.json firmware/D750_0115.bin work/d750_modulos`)
+
+| Módulo | Offset en el .bin | Longitud (sin CRC) | SHA-256 |
+|--------|-------------------|--------------------|---------|
+| `a1010_011100.bin` | 0x90 | 786432 | `690b7d1c7683cda36c72b5911cdd474ad5bc78f9467b369f3f86dc7316600213` |
+| `_wma_ver01.00.00` | 0xc0092 | 441141 | `097e0ce21b2647cec4a2136f3b697ab5fa534f6449a8a72684c0da6cbb3a8994` |
+| `b1010_115a.bin` | 0x12bbc9 | 20324448 | `acb690b6914f2f5681d099eee2fe7d67bf7847e2359a493f14eb69d3463a5808` |
+
+### H16 · Arquitectura y contenido (verificado salvo lo marcado)
+- `b1010_115a.bin` (aplicación principal) empieza con la tabla de vectores ARM: `18 f0 9f e5` ×5 (`ldr pc, [pc, #0x18]`) y tabla de punteros desde `0x20` (`0x9027d524, 0x90291c80, …`). **ARM de 32 bits little-endian** (con código Thumb-2 mezclado, ver H9). Base de carga probable `0x90000000` (por confirmar).
+- Cadenas en claro: `PTPSRV_`, `PTPCMD_`, `PTPMES_`, `PTPCYE_`, `Marvell Semiconductor Inc.` (0x1277128), `NikonMotionDetector Ver6.0`. Firmas LZMA en 0x26b4f4, 0x26d2c0, 0x280fe0, 0x28429f, 0x2842f4 (por extraer).
+- `_wma_ver01.00.00` es el módulo WLAN (cadenas `wlanapi_init()`, `wlanapi_set_apmode()`, `SSID(len=%d)=`, `wlanapi_check_fw OK`, `wlan main`, `wlan tx`); empieza con `DfuSe` + `Target` (formato DfuSe, por confirmar su alcance). Chip WiFi Marvell: por confirmar el modelo.
+- `a1010_011100.bin` (768 KiB) tiene aspecto de tabla de punteros (`0x00c20d00…`), probable cargador/boot (por confirmar).
