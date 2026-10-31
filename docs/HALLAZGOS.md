@@ -127,3 +127,18 @@ Comando (Ghidra 12.2 de brew, JDK 25): `analyzeHeadless work/ghidra D750 -import
 - `scripts/ghidra/D750Stats.java` → `funciones=13303 instrucciones=643624 cadenas=1884 cadenas_con_xref=586`, rango `0x90000000-0x9136205f`.
 - Que 586 cadenas tengan referencias indica que la base `0x90000000` es correcta (con una base errónea casi ninguna resolvería). Sigue marcada como probable hasta ver los vectores resolver a código.
 - Proyecto Ghidra en `work/ghidra/` (no versionado). Pendiente: cargar `_wma_ver01.00.00` (WLAN, formato DfuSe) y extraer las secciones LZMA.
+
+## 2026-10-31 · Búsqueda WiFi
+
+### H18 · El chip WiFi es un Broadcom BCM43362 por SDIO (verificado en `_wma_ver01.00.00`)
+Comandos: `strings -a -n 4 work/d750_modulos/_wma_ver01.00.00 | grep -iE "bcm[0-9]|nvram|ccode|boardtype|glom|sdio"` y `grep -a -b -o` para los offsets.
+- Cadenas: `BCM43362` (offset 223945), `%s: Broadcom SDPCMD CDC driver`, `[SDIO] CMD0/CMD3/CMD5/CMD7/CMD53`, `Glom packet`, `bcmapi_mpc set`. **No es Marvell**: `Marvell Semiconductor Inc.` en la aplicación principal (0x1277128) es una cadena ajena al WiFi (por confirmar su origen).
+- Blob de firmware del chip embebido y comprimido en `_wma`: `43362a2-roml/sdio-apsta-idsup-idauth-pno-idmfp-reclaim-proptxstatus Version: 5.90.153.0 CRC: d3c23e60 Date: Thu 2013-04-25 15:24:37 KST` (offset 439892).
+- NVRAM de la placa en texto (offset ≈225300): `devid=0x4343`, `vendid=0x14e4`, `boardtype=0x0598`, `boardrev=0x1309`, `xtalfreq=26000`, `sromrev=3`, **`aa2g=1` (una sola antena 2,4 GHz)**, `ccode=US`, `maxp2ga0=46`, `pa0maxpwr=80`, `ofdm2gpo=0x00000000`, `mcs2gpo0/1=0x0000`, `pmax=40`, `macaddr=00:90:4c:07:71:12`.
+- Capa de la cámara sobre el chip (`wlanapi_*`): comandos de consola `11n_enb`, `band`, `stamode`, `apmode`, `sta_rate`, `ap_rate`, `set_bgrate`, `get_nrate`, `set_mpc`; mensajes `[WIFI@] channel`, `country code`, `Get mcs index`, `current rate`.
+- No aparecen `bw_cap`, `mimo_bw_cap`, `HT40` ni `40MHz` en ninguno de los tres módulos (verificado con grep; el blob del chip está comprimido, por lo que ahí no se puede descartar).
+
+### H19 · Implicación para el objetivo (por confirmar con hoja de datos oficial)
+- El BCM43362 es un chip 802.11 b/g/n de **1×1 y solo 2,4 GHz**; el módulo Inventek ISM43362 (basado en él) anuncia `single stream w/20 MHz, 7,2-72,2 Mbps`. Si el chip es solo de 20 MHz (MCS7 = 72,2 Mbps de PHY), el techo real de ~25-30 Mbps (3-4 MB/s) coincide con los 2-4 MB/s medidos: **el límite sería del hardware, no un valor editable del firmware**. Falta verlo en la hoja de datos oficial (las copias encontradas son de terceros) y con la medición en vivo `sudo wdutil info` con la cámara conectada (regla del skill).
+- Lo único editable que sí aparece: `ccode=US` y la potencia (`maxp2ga0`, `pa0maxpwr`) en la NVRAM; no suben el caudal.
+- Fuentes: https://www.mouser.com/datasheet/2/908/ISM43362_L36_Functional_Spec-20079-1.1-1-1371209.pdf, https://datasheetq.com/pdf-view/BCM43362-Cypress.pdf
