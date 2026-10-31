@@ -19,3 +19,8 @@ CPU/arquitectura del firmware de la D750, esquema de cifrado, chip WiFi y si su 
 2. Obtener firmware (versión instalada y C 1.15), `scripts/fwinfo.py`, comparar versiones.
 3. Resolver contenedor/cifrado. 4. Ghidra con arquitectura y base correctas. 5. Localizar WiFi/PTP-IP. 6. Informe.
 Parchear solo si 1-5 muestran un límite concreto y Daniel lo pide.
+
+## Estado (2026-10-31): cerrado
+- Fases 2-5 hechas: firmware descifrado y validado por CRC (H8-H15), arquitectura y chip WiFi identificados (H9, H16, H18, H22), Ghidra cargado (H17, H23-H24).
+- Respuesta a la pregunta: **el límite es del hardware** (BCM43362 solo 20 MHz, MCS0-7, hoja de datos CYW43362; H26). No hay nada que parchear para subir el caudal por WiFi.
+- Abierto, para quien tenga cámaras de prueba: partir el programa principal en sus imágenes (H28), rutina de actualización y qué valida la cámara (H21/H25), tablas de ajustes. Nunca se flasheó ni se tocó una cámara.

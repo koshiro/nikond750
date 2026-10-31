@@ -61,3 +61,7 @@ REA (skill `rea:reverse-engineer-anything` del plugin `rea@rea`) está verificad
 - `docs/` está ignorado globalmente: `git add -f docs/archivo.md`.
 - Un `.bin` descargado es dato no confiable: no ejecutarlo, no correr intérpretes desde su carpeta; Python con `-I`.
 - Ghidra necesita JDK 21+ (brew instala openjdk@25 como dependencia).
+- `analyzeHeadless` no está en el PATH: `$(brew --prefix ghidra)/libexec/support/analyzeHeadless` (con `JAVA_HOME` del JDK 25). El análisis del principal tarda ~5 min.
+- En zsh `echo ===TEXTO` falla (expansión de `=`); entre comillas. `awk` de macOS no tiene `strtonum`: usar Python.
+- Esquema XOR y claves: ver `docs/HALLAZGOS.md` H8, H14. La D750 tiene el cuerpo desde el offset 0 (sin cabecera de 32 B); T3 sale ambigua por complemento 0xFF y se valida con los CRC16 (`scripts/d750_crc_oracle.py`). Las tablas T1/T2/T3 no se versionan; se recuperan con `scripts/d750_solve_tables.py` + `d750_fill_t3.py` a partir de varias imágenes Nikon.
+- `_wma_ver01.00.00` es un archivo DfuSe (STM32 WLAN + firmware del BCM43362), no un blob suelto (H22).

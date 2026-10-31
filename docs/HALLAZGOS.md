@@ -67,7 +67,7 @@ Comando: `.venv/bin/python -I scripts/d750_t1_probe.py firmware/D750_0115.bin wo
 - Bloques con T3 conocido (p. ej. 40 y 53, offsets `0x280000`/`0x350000`) descifran a Thumb-2 (`f7 9c ff 07 46 98 f8 b8 02 …`, `bl`/`ldrb`) y cadenas reales (`20%02d/%02d/%02d %02d:%02d:%02d`).
 - El bloque 137 (T3 conocido) es texto UTF-16 de los menús (`vid\nphotoprint effect.\nMonochrome…`), lo que confirma el descifrado.
 
-### H10 · Falta T3 en 201 de 256 bloques de 64 KiB (por resolver)
+### H10 · Falta T3 en 201 de 256 bloques de 64 KiB (superado por H14: resuelto con más imágenes y el oráculo de CRC)
 - T3 por relleno constante: solo **55/256** bloques (los bloques 0-71 y 134-251 con huecos). Sin T3 no se descifra el resto.
 - Intentos de recuperarlo solo con este .bin (verificado, insuficientes): puntuar por bytes cero acierta 42/55 sobre bloques conocidos; sumar decodificación Thumb con capstone tampoco mejora (42/55). La entropía es invariante a XOR, no sirve. Hay bloques de texto (UTF-16 Devanagari, `09 xx`) y datos comprimidos donde la estadística no distingue la constante.
 - Vía fiable: las propias tablas de las Z. WonderLantern documenta que 4 imágenes (`Z_8_0311`, `Z7_2_0170`, `Z_6_0380`, `Z_50_0260`) cubren los 256 bloques de T3 y las tablas son comunes. Pendiente: obtener alguna imagen Z o la T3 por otra vía.
@@ -138,19 +138,19 @@ Comandos: `strings -a -n 4 work/d750_modulos/_wma_ver01.00.00 | grep -iE "bcm[0-
 - Capa de la cámara sobre el chip (`wlanapi_*`): comandos de consola `11n_enb`, `band`, `stamode`, `apmode`, `sta_rate`, `ap_rate`, `set_bgrate`, `get_nrate`, `set_mpc`; mensajes `[WIFI@] channel`, `country code`, `Get mcs index`, `current rate`.
 - No aparecen `bw_cap`, `mimo_bw_cap`, `HT40` ni `40MHz` en ninguno de los tres módulos (verificado con grep; el blob del chip está comprimido, por lo que ahí no se puede descartar).
 
-### H19 · Implicación para el objetivo (por confirmar con hoja de datos oficial)
+### H19 · Implicación para el objetivo (confirmado por H26: el límite es del chip)
 - El BCM43362 es un chip 802.11 b/g/n de **1×1 y solo 2,4 GHz**; el módulo Inventek ISM43362 (basado en él) anuncia `single stream w/20 MHz, 7,2-72,2 Mbps`. Si el chip es solo de 20 MHz (MCS7 = 72,2 Mbps de PHY), el techo real de ~25-30 Mbps (3-4 MB/s) coincide con los 2-4 MB/s medidos: **el límite sería del hardware, no un valor editable del firmware**. Falta verlo en la hoja de datos oficial (las copias encontradas son de terceros) y con la medición en vivo `sudo wdutil info` con la cámara conectada (regla del skill).
 - Lo único editable que sí aparece: `ccode=US` y la potencia (`maxp2ga0`, `pa0maxpwr`) en la NVRAM; no suben el caudal.
 - Fuentes: https://www.mouser.com/datasheet/2/908/ISM43362_L36_Functional_Spec-20079-1.1-1-1371209.pdf, https://datasheetq.com/pdf-view/BCM43362-Cypress.pdf
 
-### H20 · El blob del chip no está comprimido y no hay evidencia de 40 MHz (verificado salvo lo marcado)
+### H20 · El blob del chip no está comprimido y no hay evidencia de 40 MHz (verificado salvo lo marcado; ubicación exacta en H22)
 - **Sin compresión:** en `_wma_ver01.00.00` probé raw-deflate/zlib/gzip/LZMA (todos los offsets 0x30000-0x37000 para raw, y cada cabecera zlib/gzip/LZMA): 0 flujos válidos. `binwalk` solo ve tablas de cifrado del host (CRC32 en 0x2c4d1, AES S-Box en 0x31905/0x32a05, SHA-256 en 0x32b6d/0x52829) y `Copyright (C) Ubiquitous Corp. 2001-2013` en 0x36813 (pila TCP/IP del host). Las firmas LZMA de `fwinfo.py` en este módulo eran falsos positivos.
 - **El firmware del chip está en claro** dentro de `_wma` desde ≈0x52000 hasta ≈0x6b680 (cadenas `wl%d: wlc_wsec…` en 0x523b2, `5.90.153.8x2 (TOB)` y `Apr 25 2013` en 0x52a35, `TRAP %x(%x): pc %x, lr, sp, cpsr, spsr` en 0x526c3 → ARM; versión completa `Version: 5.90.153.0 …` en 0x6b5d4). Es una imagen `roml` (parches sobre ROM), por eso casi no tiene cadenas de capacidades: `bw_cap`/`mimo_bw_cap`/`HT40` **no aparecen** porque viven en la ROM del chip. Los límites exactos del blob quedan por confirmar.
 - **40 MHz:** lo único con `bw40` son nombres genéricos de variables NVRAM de potencia (`mcsbw402gpo` 0x52ee7, `bw40po` 0x531f8, `legofdm40duppo` 0x52fe2), compartidos por toda la familia; no prueban que el chip pueda 40 MHz. La NVRAM de la D750 solo define `aa2g=1` y `mcs2gpo0/1=0` (sin offsets de 40 MHz).
 - **Lo que controla el host** (iovars que usa Nikon, 0xe700-0xf400): `nmode`, `nrate`, `sgi_tx`, `sgi_rx`, `ampdu_manual_mode`, `chanspec`, `mfp`, `phy_txpwrindex`, `iscan`, `counters`. **No usa** `mimo_bw_cap` ni `bw_cap`. Qué `chanspec` fija (ancho 20 vs 40 MHz) queda por rastrear en Ghidra (`_wma` cargado como ARM Thumb, base probable `0x00800000` por la tabla de punteros en 0x38001).
 - Búsqueda web (no concluyente): no encontré ninguna fuente que diga que el BCM43362 sea de solo 20 MHz ni que soporte HT40; el módulo Inventek lo anuncia a 20 MHz. Con Linux/brcmfmac el soporte HT40 se pregunta al firmware. Prueba definitiva: consultar las capacidades del chip (`iw phy` con otro host) o leer el PHY en la ROM.
 
-### H21 · ¿Se puede actualizar el firmware del chip? (análisis, no se hizo nada)
+### H21 · ¿Se puede actualizar el firmware del chip? (análisis, no se hizo nada; H26 muestra que no aportaría ancho de banda)
 - El blob se carga en la RAM del chip en cada arranque (`Write the firm to the RAM`, `Read the firm to the RAM`, `Chip Init`), así que actualizarlo = reemplazarlo dentro del módulo `_wma` del firmware de la cámara y reempaquetar. No hay otro camino: el chip no tiene flash propia.
 - Cambiar el blob exige recalcular el CRC16 del módulo y el CRC de paquete (viables: algoritmo conocido, verificado) y el mismo tamaño/ubicación (la imagen cargada está en RAM del chip con espacio limitado). **Por confirmar:** si la D750 valida algo más que los CRC; el archivo no trae el digest SHA-1 con clave de las Z (empieza con 32 espacios), pero no sé si la cámara lo comprueba de otra forma.
 - Un firmware más nuevo no habilitaría 40 MHz si el límite es del PHY; el 5.90.153.x ya es el de la familia 43362 (2013) y las versiones posteriores de Cypress/Infineon son correcciones. **Riesgo alto:** un `_wma` malo puede dejar sin WiFi o brickear la cámara. No se flashea nada sin petición explícita.
