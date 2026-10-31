@@ -71,3 +71,22 @@ Comando: `.venv/bin/python -I scripts/d750_t1_probe.py firmware/D750_0115.bin wo
 - T3 por relleno constante: solo **55/256** bloques (los bloques 0-71 y 134-251 con huecos). Sin T3 no se descifra el resto.
 - Intentos de recuperarlo solo con este .bin (verificado, insuficientes): puntuar por bytes cero acierta 42/55 sobre bloques conocidos; sumar decodificación Thumb con capstone tampoco mejora (42/55). La entropía es invariante a XOR, no sirve. Hay bloques de texto (UTF-16 Devanagari, `09 xx`) y datos comprimidos donde la estadística no distingue la constante.
 - Vía fiable: las propias tablas de las Z. WonderLantern documenta que 4 imágenes (`Z_8_0311`, `Z7_2_0170`, `Z_6_0380`, `Z_50_0260`) cubren los 256 bloques de T3 y las tablas son comunes. Pendiente: obtener alguna imagen Z o la T3 por otra vía.
+
+## 2026-10-31 · Tablas con D780 y Z 6 (T3 al 81 %)
+
+### H11 · Inventario de las imágenes nuevas (verificado)
+Comando: `shasum -a 256 firmware/*.bin`; `xxd -l 48`
+
+| Archivo | Tamaño (bytes) | SHA-256 | Notas |
+|---------|----------------|---------|-------|
+| `D780_0121.bin` | 37731134 | `9eedbd030dd5eab9d10fa26e8c1c57dfdbffd0cfdb7ce226e34e341cbcab8c52` | cabecera de 20 B + 12 B y 32 espacios en `0x20` (formato Z) |
+| `Z_6_0380.bin` | 34923366 | `ff978ffdf77c58c0b861a06e16d432d5886969f3cdd05d62f6c8e82e8a4cea54` | coincide con el hash conocido de WonderLantern |
+
+- `firmware/NKLD0218.BIN` (39588 B) no es el firmware de la D800 (es un archivo de datos de objetivos, `file` → `data`). **El firmware de la D800 no está en `firmware/`.**
+- La D750 es la única con las 32 espacios en `0x00` (cuerpo desde el offset 0); la D780 y la Z 6 usan la cabecera de 32 bytes.
+
+### H12 · Tablas combinadas: T1 y T2 completas, T3 207/256 (verificado)
+Comando: `.venv/bin/python -I scripts/d750_solve_tables.py work/wonderlantern work/key.json firmware/D750_0115.bin firmware/D780_0121.bin firmware/Z_6_0380.bin`
+- Las tres imágenes coinciden en la familia de T1 y T1/T2 dan los hashes de referencia (`29d2e342…`, `6e87de5d…`). T3: `207/256` bloques cubiertos por relleno constante; etapa 5 no corrige ninguno.
+- T3 faltante (49 índices): `72-77, 90, 91, 102, 108, 125-128, 144-146, 148, 150, 160, 161, 164-166, 180, 185, 187, 188, 191, 193, 194, 196-198, 200, 201, 203-209, 211, 212, 220, 224, 244, 245`.
+- Siguiente: otra imagen Nikon del esquema legado (D800 u otra) con relleno en esos índices. `work/key.json` no se versiona.
