@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "rea": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "rea-agents@6.8.0",
+        "mcp"
+      ],
+      "env": {
+        "GHIDRA_INSTALL_DIR": "/Users/daniel/tools/ghidra_12.1.4_PUBLIC",
+        "JAVA_HOME": "/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home"
+      }
+    }
+  }
+}

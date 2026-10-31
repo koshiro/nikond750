@@ -1,0 +1,10 @@
+# Firmware de Nikon y todo lo derivado: no se versiona (propiedad de Nikon, pesado)
+firmware/
+work/
+*.bin
+*.dec
+*.elf
+*.gpr
+*.rep
+.DS_Store
+.venv/
