@@ -121,3 +121,9 @@ Comandos: `scripts/d750_solve_tables.py` (6 imágenes → T3 238/256), `scripts/
 - Cadenas en claro: `PTPSRV_`, `PTPCMD_`, `PTPMES_`, `PTPCYE_`, `Marvell Semiconductor Inc.` (0x1277128), `NikonMotionDetector Ver6.0`. Firmas LZMA en 0x26b4f4, 0x26d2c0, 0x280fe0, 0x28429f, 0x2842f4 (por extraer).
 - `_wma_ver01.00.00` es el módulo WLAN (cadenas `wlanapi_init()`, `wlanapi_set_apmode()`, `SSID(len=%d)=`, `wlanapi_check_fw OK`, `wlan main`, `wlan tx`); empieza con `DfuSe` + `Target` (formato DfuSe, por confirmar su alcance). Chip WiFi Marvell: por confirmar el modelo.
 - `a1010_011100.bin` (768 KiB) tiene aspecto de tabla de punteros (`0x00c20d00…`), probable cargador/boot (por confirmar).
+
+### H17 · Importación en Ghidra de `b1010_115a.bin` (verificado)
+Comando (Ghidra 12.2 de brew, JDK 25): `analyzeHeadless work/ghidra D750 -import work/d750_modulos/b1010_115a.bin -processor ARM:LE:32:v7 -loader BinaryLoader -loader-baseAddr 0x90000000` (5 min; log en `work/ghidra-import.log`). `analyzeHeadless` no está en el PATH: está en `$(brew --prefix ghidra)/libexec/support/`.
+- `scripts/ghidra/D750Stats.java` → `funciones=13303 instrucciones=643624 cadenas=1884 cadenas_con_xref=586`, rango `0x90000000-0x9136205f`.
+- Que 586 cadenas tengan referencias indica que la base `0x90000000` es correcta (con una base errónea casi ninguna resolvería). Sigue marcada como probable hasta ver los vectores resolver a código.
+- Proyecto Ghidra en `work/ghidra/` (no versionado). Pendiente: cargar `_wma_ver01.00.00` (WLAN, formato DfuSe) y extraer las secciones LZMA.
